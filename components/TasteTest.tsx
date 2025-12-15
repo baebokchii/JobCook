@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChefState, ToastType, InterviewMessage } from '../types.ts';
-import { getInterviewQuestion, evaluateAnswer, evaluateAudioAnswer } from '../services/geminiService.ts';
-import { ChefHat, Play, RefreshCw, Star, Volume2, VolumeX, Video, Mic, StopCircle, Send, AlertCircle, Camera } from 'lucide-react';
+import { getInterviewQuestion, evaluateAudioAnswer } from '../services/geminiService.ts';
+import { ChefHat, RefreshCw, Star, Video, Mic, Camera } from 'lucide-react';
 
 interface TasteTestProps {
   state: ChefState;
@@ -11,7 +11,6 @@ interface TasteTestProps {
 
 export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToast }) => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   
   // Media State
@@ -24,7 +23,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
   useEffect(() => {
     return () => {
       stopMediaStream();
-      window.speechSynthesis.cancel();
     };
   }, []);
 
@@ -35,16 +33,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [state.interviewHistory]);
-
-  // Speak the latest chef message when it changes
-  useEffect(() => {
-    if (state.interviewHistory.length > 0 && !isMuted) {
-      const lastMsg = state.interviewHistory[state.interviewHistory.length - 1];
-      if (lastMsg.role === 'chef') {
-        speak(lastMsg.content);
-      }
-    }
-  }, [state.interviewHistory, isMuted]);
 
   const stopMediaStream = () => {
     if (streamRef.current) {
@@ -65,18 +53,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
       console.error("Error accessing camera:", err);
       onShowToast("Could not access camera/microphone. Check permissions.", "error");
     }
-  };
-
-  const speak = (text: string) => {
-    if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha')) || voices[0];
-    if (preferredVoice) utterance.voice = preferredVoice;
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
   };
 
   const startInterview = async () => {
@@ -120,8 +96,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
   const initiateRecording = () => {
     // We only record audio for the AI analysis to save bandwidth and improve speed,
     // but the user sees the video so it feels like a video interview.
-    // However, if we want to support video analysis later, we can switch tracks here.
-    // Current Geminin 2.5 Flash is great with Audio.
     const audioTrack = streamRef.current?.getAudioTracks()[0];
     if (!audioTrack) {
         onShowToast("Microphone not found.", "error");
@@ -144,7 +118,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
     mediaRecorderRef.current = recorder;
     recorder.start();
     setIsRecording(true);
-    window.speechSynthesis.cancel(); // Stop AI talking when user starts
   };
 
   const stopRecording = () => {
@@ -225,17 +198,6 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
             <p className="text-slate-500 mt-1">Practice facing the camera. AI evaluates your content and delivery.</p>
         </div>
         <div className="flex gap-2">
-            <button 
-                onClick={() => {
-                    const newMuted = !isMuted;
-                    setIsMuted(newMuted);
-                    if (newMuted) window.speechSynthesis.cancel();
-                }}
-                className={`p-2 rounded-lg border transition-all ${isMuted ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 shadow-sm'}`}
-                title={isMuted ? "Unmute AI" : "Mute AI"}
-            >
-                {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
             {state.interviewHistory.length > 0 && (
             <button 
                 onClick={() => {
@@ -317,8 +279,9 @@ export const TasteTest: React.FC<TasteTestProps> = ({ state, setState, onShowToa
         </div>
 
         {/* Right: Camera Stage */}
-        <div className="flex flex-col gap-4 h-full">
-             <div className="flex-1 bg-black rounded-2xl overflow-hidden relative shadow-md border border-slate-200 group">
+        <div className="flex flex-col gap-4">
+             {/* Use aspect-video to enforce consistent size regardless of other content */}
+             <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden relative shadow-md border border-slate-200 group">
                 <video 
                     ref={videoRef} 
                     autoPlay 
