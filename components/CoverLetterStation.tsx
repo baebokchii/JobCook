@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { ChefState, ToastType } from '../types.ts';
 import { cookCoverLetter, extractJobDescriptionFromImage } from '../services/geminiService.ts';
-import { Flame, PenTool, Copy, Check, Sparkles, Pencil, Eye, RefreshCw, Trash2, ImagePlus, Loader2, UploadCloud, UtensilsCrossed } from 'lucide-react';
+import { Flame, PenTool, Copy, Check, Sparkles, Pencil, Eye, RefreshCw, Trash2, ImagePlus, Loader2, UploadCloud, UtensilsCrossed, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface CoverLetterStationProps {
@@ -19,16 +19,16 @@ export const CoverLetterStation: React.FC<CoverLetterStationProps> = ({ state, s
   const handleCookLetter = async () => {
     if (!state.currentRecipe) return;
     setState(prev => ({ ...prev, isCooking: true }));
-    onShowToast("Firing up the grill... (Writing letter)", "info");
+    onShowToast("Writing cover letter...", "info");
 
     try {
       const letter = await cookCoverLetter(state.ingredients, state.currentRecipe);
       setState(prev => ({ ...prev, generatedCoverLetter: letter, isCooking: false }));
-      setIsEditing(false); // Reset to preview mode on new generation
-      onShowToast("Special Sauce ready!", "success");
+      setIsEditing(false);
+      onShowToast("Cover letter ready!", "success");
     } catch (e: any) {
       console.error(e);
-      onShowToast(e.message || "The chef burned the sauce (Generation failed).", "error");
+      onShowToast(e.message || "Generation failed.", "error");
       setState(prev => ({ ...prev, isCooking: false }));
     }
   };
@@ -37,7 +37,7 @@ export const CoverLetterStation: React.FC<CoverLetterStationProps> = ({ state, s
     if (state.generatedCoverLetter) {
       navigator.clipboard.writeText(state.generatedCoverLetter);
       setCopied(true);
-      onShowToast("Cover letter copied to clipboard", "success");
+      onShowToast("Copied to clipboard", "success");
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -64,7 +64,7 @@ export const CoverLetterStation: React.FC<CoverLetterStationProps> = ({ state, s
     }
 
     setIsExtracting(true);
-    onShowToast("Reading the order ticket...", "info");
+    onShowToast("Reading text...", "info");
 
     try {
       const reader = new FileReader();
@@ -89,7 +89,6 @@ export const CoverLetterStation: React.FC<CoverLetterStationProps> = ({ state, s
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      console.error("Error extracting text from image", err);
       onShowToast(err.message || "OCR failed.", "error");
       setIsExtracting(false);
     }
@@ -98,153 +97,149 @@ export const CoverLetterStation: React.FC<CoverLetterStationProps> = ({ state, s
   };
 
   return (
-    <div className="bg-stone-50 rounded-3xl shadow-xl overflow-hidden border-2 border-stone-200 flex flex-col h-full animate-fadeIn">
+    <div className="flex flex-col h-full animate-fadeIn pb-10">
       {/* Header */}
-      <div className="bg-white p-6 border-b border-stone-200 shrink-0 z-10">
-        <div className="flex items-center justify-between">
-            <div>
-                <h2 className="text-3xl font-display font-bold flex items-center gap-3 text-stone-800">
-                <div className="bg-red-100 p-2 rounded-xl text-red-600">
-                    <PenTool size={24} />
-                </div>
-                Special Sauce
-                </h2>
-                <p className="text-stone-500 mt-1 text-sm font-medium ml-1">Cook up a custom cover letter based on your ingredients.</p>
-            </div>
-        </div>
+      <div className="mb-10">
+        <h1 className="text-3xl font-display font-bold text-slate-800">Cover Letter</h1>
+        <p className="text-slate-500 mt-1">Generate a professional, personalized cover letter based on your experience.</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto flex flex-col">
-        {/* Input Section */}
-        <div className="p-6 md:p-8 shrink-0 space-y-6 bg-white border-b border-stone-200">
-          
-          <input 
-              type="file" 
-              ref={fileInputRef} 
-              className="hidden" 
-              accept="image/*" 
-              onChange={handleImageUpload}
-          />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+        {/* Left Column: Input */}
+        <div className="flex flex-col gap-6">
+             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm flex-1 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                    <label className="text-sm font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                        <UtensilsCrossed size={16} />
+                        Job Description
+                    </label>
+                    <div className="flex gap-2">
+                       {!state.currentRecipe ? (
+                           <>
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept="image/*" 
+                                onChange={handleImageUpload}
+                            />
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isExtracting}
+                                className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:border-slate-300 transition-all"
+                            >
+                                {isExtracting ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+                                {isExtracting ? 'Scanning...' : 'Upload'}
+                            </button>
+                           </>
+                       ) : (
+                           <button 
+                            onClick={handleClear}
+                            className="flex items-center gap-2 text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 border border-red-100 px-3 py-1.5 rounded-lg transition-all"
+                            >
+                            <Trash2 size={14} />
+                            Clear
+                            </button>
+                       )}
+                    </div>
+                </div>
 
-          {/* Input Header & Controls */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-               <div className="space-y-1">
-                  <label className="text-lg font-bold text-stone-700 flex items-center gap-2">
-                      <UtensilsCrossed size={20} className="text-red-500"/>
-                      The Order <span className="text-stone-400 font-normal text-sm">(Job Description)</span>
-                  </label>
-                  <p className="text-sm text-stone-400">Paste the job description or upload a screenshot to begin.</p>
-              </div>
-
-              <div className="flex gap-2">
-                 {!state.currentRecipe ? (
-                      <button 
+                <div className="relative flex-1 mb-4">
+                     {!state.currentRecipe && !isExtracting && (
+                       <div 
                           onClick={() => fileInputRef.current?.click()}
-                          disabled={isExtracting}
-                          className="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-700 px-5 py-2.5 rounded-xl transition-all font-semibold border border-stone-200 shadow-sm"
-                      >
-                          {isExtracting ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
-                          {isExtracting ? 'Scanning...' : 'Upload Screenshot'}
-                      </button>
-                 ) : (
-                     <button 
-                      onClick={handleClear}
-                      className="text-sm font-bold text-stone-500 hover:text-red-600 flex items-center gap-2 bg-white px-4 py-2 rounded-lg border border-stone-200 hover:border-red-200 transition-all shadow-sm"
-                      >
-                      <Trash2 size={16} />
-                      Clear Order
-                      </button>
-                 )}
-              </div>
-          </div>
+                          className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-slate-50/50 rounded-xl z-10 border-2 border-dashed border-slate-200"
+                       >
+                           <div className="bg-white p-3 rounded-full shadow-sm mb-2 border border-slate-100">
+                             <UploadCloud className="text-slate-400 w-6 h-6" />
+                           </div>
+                           <p className="text-slate-400 font-medium text-sm">Paste text or upload image</p>
+                       </div>
+                     )}
+                     
+                  <textarea
+                    className="w-full h-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-all resize-none text-slate-700 font-medium text-sm leading-relaxed"
+                    placeholder="Paste job description here..."
+                    value={state.currentRecipe}
+                    onChange={(e) => setState({ ...state, currentRecipe: e.target.value })}
+                  />
+                </div>
 
-          {/* Main Input Area */}
-          <div className="relative group">
-               {!state.currentRecipe && !isExtracting && (
-                 <div 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-stone-50/50 rounded-xl z-10"
-                 >
-                     <div className="bg-white p-4 rounded-full shadow-sm mb-3">
-                       <UploadCloud className="text-stone-300 w-8 h-8" />
-                     </div>
-                     <p className="text-stone-400 font-medium">Paste text here or <span className="text-red-500 font-bold">Upload Image</span></p>
-                 </div>
-               )}
-               
-            <textarea
-              className="w-full h-48 p-6 rounded-2xl border-2 border-stone-200 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 resize-none transition-all outline-none bg-stone-50 focus:bg-white shadow-inner font-mono text-sm leading-relaxed"
-              placeholder=""
-              value={state.currentRecipe}
-              onChange={(e) => setState({ ...state, currentRecipe: e.target.value })}
-            />
-          </div>
-
-          <button
-              onClick={handleCookLetter}
-              disabled={state.isCooking || !state.currentRecipe || state.ingredients.length === 0 || isExtracting}
-              className="w-full bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 disabled:from-stone-300 disabled:to-stone-400 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg transform active:scale-[0.99]"
-            >
-              {state.isCooking ? <Flame className="animate-bounce" /> : <PenTool />}
-              <span className="text-lg">{state.isCooking ? 'Simmering...' : 'Cook Cover Letter'}</span>
-            </button>
+                <button
+                    onClick={handleCookLetter}
+                    disabled={state.isCooking || !state.currentRecipe || state.ingredients.length === 0 || isExtracting}
+                    className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all shadow-md shadow-slate-200"
+                  >
+                    {state.isCooking ? <Loader2 className="animate-spin" /> : <PenTool size={18} />}
+                    <span className="text-lg">{state.isCooking ? 'Generating...' : 'Generate Letter'}</span>
+                  </button>
+             </div>
         </div>
 
-        {/* Results Section */}
-        {state.generatedCoverLetter && (
-           <div className="flex-1 p-6 md:p-8 bg-stone-50 animate-slideUp">
-               <div className="bg-white rounded-3xl border border-stone-200 shadow-sm flex flex-col overflow-hidden h-full">
-                   {/* Result Header */}
-                   <div className="bg-white border-b border-stone-100 p-4 md:p-6 flex items-center justify-between">
-                       <div className="flex items-center gap-3 text-red-600">
-                            <div className="bg-red-50 p-2 rounded-lg">
-                                <Sparkles size={20} />
-                            </div>
-                            <h3 className="text-lg md:text-xl font-bold uppercase tracking-wide text-stone-800">Your Special Sauce</h3>
-                       </div>
-                       
-                       <div className="flex gap-2">
-                        <button 
-                          onClick={handleCookLetter}
-                          disabled={state.isCooking}
-                          className="bg-stone-50 border border-stone-200 p-2 rounded-lg shadow-sm hover:shadow-md hover:border-amber-200 transition-all text-stone-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Generate Again"
-                        >
-                          <RefreshCw size={18} className={state.isCooking ? "animate-spin" : ""} />
-                        </button>
-                        <button 
-                          onClick={() => setIsEditing(!isEditing)}
-                          className="bg-stone-50 border border-stone-200 p-2 rounded-lg shadow-sm hover:shadow-md hover:border-blue-200 transition-all text-stone-500 hover:text-blue-600"
-                          title={isEditing ? "Preview Mode" : "Edit Letter"}
-                        >
-                          {isEditing ? <Eye size={18} /> : <Pencil size={18} />}
-                        </button>
-                        <button 
-                          onClick={handleCopy}
-                          className="bg-stone-50 border border-stone-200 p-2 rounded-lg shadow-sm hover:shadow-md hover:border-green-200 transition-all text-stone-500 hover:text-green-600"
-                          title="Copy to Clipboard"
-                        >
-                          {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
-                        </button>
-                      </div>
-                   </div>
-                   
-                   {/* Content */}
-                   {isEditing ? (
-                      <textarea
-                        className="w-full flex-1 bg-white p-6 md:p-8 text-stone-700 font-sans text-base leading-relaxed resize-none focus:outline-none focus:bg-stone-50 transition-all"
-                        value={state.generatedCoverLetter}
-                        onChange={(e) => setState(prev => ({ ...prev, generatedCoverLetter: e.target.value }))}
-                        spellCheck={false}
-                      />
-                   ) : (
-                      <div className="flex-1 bg-white p-6 md:p-8 overflow-y-auto prose prose-amber max-w-none">
-                        <ReactMarkdown>{state.generatedCoverLetter}</ReactMarkdown>
-                      </div>
-                   )}
-               </div>
-           </div>
-        )}
+        {/* Right Column: Result */}
+        <div className="flex flex-col h-full min-h-[500px]">
+           {state.generatedCoverLetter ? (
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col h-full overflow-hidden animate-slideUp">
+                 {/* Toolbar */}
+                 <div className="bg-slate-50 border-b border-slate-200 p-3 flex items-center justify-between shrink-0">
+                     <div className="flex items-center gap-2 px-2">
+                        <FileText size={16} className="text-slate-500" />
+                        <span className="text-sm font-bold text-slate-700">Draft.md</span>
+                     </div>
+                     <div className="flex gap-1">
+                      <button 
+                        onClick={handleCookLetter}
+                        disabled={state.isCooking}
+                        className="p-2 rounded-lg hover:bg-white hover:shadow-sm text-slate-500 hover:text-slate-800 transition-all"
+                        title="Regenerate"
+                      >
+                        <RefreshCw size={16} className={state.isCooking ? "animate-spin" : ""} />
+                      </button>
+                      <button 
+                        onClick={() => setIsEditing(!isEditing)}
+                        className={`p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all ${isEditing ? 'text-blue-600 bg-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                        title="Toggle Edit"
+                      >
+                        {isEditing ? <Eye size={16} /> : <Pencil size={16} />}
+                      </button>
+                      <button 
+                        onClick={handleCopy}
+                        className="p-2 rounded-lg hover:bg-white hover:shadow-sm text-slate-500 hover:text-emerald-600 transition-all"
+                        title="Copy"
+                      >
+                        {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                      </button>
+                    </div>
+                 </div>
+                 
+                 {/* Document View */}
+                 <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
+                    <div className="bg-white shadow-sm border border-slate-100 min-h-full p-8 md:p-10 mx-auto max-w-[650px]">
+                       {isEditing ? (
+                          <textarea
+                            className="w-full h-full text-slate-800 font-serif text-base leading-relaxed resize-none focus:outline-none bg-transparent"
+                            value={state.generatedCoverLetter}
+                            onChange={(e) => setState(prev => ({ ...prev, generatedCoverLetter: e.target.value }))}
+                            spellCheck={false}
+                          />
+                       ) : (
+                          <div className="prose prose-slate max-w-none font-serif prose-p:leading-loose">
+                            <ReactMarkdown>{state.generatedCoverLetter}</ReactMarkdown>
+                          </div>
+                       )}
+                    </div>
+                 </div>
+             </div>
+           ) : (
+              <div className="bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
+                  <div className="bg-white p-4 rounded-full shadow-sm mb-4">
+                     <FileText size={32} className="text-slate-300" />
+                  </div>
+                  <h3 className="font-bold text-slate-600 text-lg">No Letter Generated Yet</h3>
+                  <p className="max-w-xs mt-2 text-sm">Upload a job description and click generate to create your custom cover letter.</p>
+              </div>
+           )}
+        </div>
       </div>
     </div>
   );

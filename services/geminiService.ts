@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { Ingredient, DishAnalysis, CompanyResearchResult } from "../types.ts";
+import { Ingredient, DishAnalysis, CompanyResearchResult, InterviewMessage } from "../types.ts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -65,11 +65,11 @@ export const analyzeDish = async (
     I am trying to cook this dish (apply for this job):
     ${jobDescription}
 
-    Analyze the ingredients against the recipe.
-    1. Give a "Match Score" from 0 to 100 based on how well the ingredients fit the recipe.
-    2. List "Missing Ingredients" (skills or experiences the job asks for but I lack).
-    3. Provide a "Taste Profile" (a brief summary of the fit).
-    4. Give 3 "Chef Tips" to improve the dish (application).
+    Analyze the ingredients against the recipe with a focus on ATS (Applicant Tracking System) optimization.
+    1. Give a "Match Score" from 0 to 100 based on keyword matching and semantic relevance.
+    2. List "Missing Ingredients" (Critical keywords, skills, or experiences the job asks for but I lack).
+    3. Provide a "Taste Profile" (A summary of the fit, highlighting strengths).
+    4. Give 3 "Chef Tips" to improve the dish (Actionable advice to pass the ATS).
     5. Extract the "Company Name" from the job description. If not explicitly stated, use "Unknown Company".
   `;
 
@@ -129,8 +129,6 @@ export const researchCompany = async (companyName: string, ingredients: Ingredie
     Keep it professional, insightful, and actionable.
   `;
 
-  // Removed googleSearch tool as it can cause 500 errors in some preview environments/tiers.
-  // The model's internal knowledge base is sufficient for most company research.
   const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
@@ -138,7 +136,7 @@ export const researchCompany = async (companyName: string, ingredients: Ingredie
 
   return {
     summary: response.text || "No information found.",
-    sources: [] // Sources unavailable without live search
+    sources: [] 
   };
 };
 
@@ -176,20 +174,64 @@ export const cookCoverLetter = async (
   return response.text || "The chef is busy and couldn't write the letter.";
 };
 
+export const refineDescription = async (text: string, category: string): Promise<string[]> => {
+  const prompt = `
+    You are a Resume Polish Expert.
+    Refine the following "${category}" description to be more professional, impactful, and ATS-friendly.
+    
+    Original Text: "${text}"
+
+    Provide exactly 3 distinct variations:
+    1. **Action-Oriented:** Start with strong action verbs.
+    2. **Quantified/Result-Driven:** Emphasize numbers or outcomes (add placeholders like [X%] if needed).
+    3. **Professional/Concise:** Clean, formal, and direct.
+
+    Return JSON format only:
+    { "variations": ["Variation 1 text", "Variation 2 text", "Variation 3 text"] }
+  `;
+
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          variations: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["variations"]
+      }
+    }
+  }));
+
+  const textResponse = response.text;
+  if (!textResponse) return ["Could not generate variations."];
+  try {
+    const json = JSON.parse(textResponse);
+    return json.variations;
+  } catch (e) {
+    return ["Error parsing improvements."];
+  }
+};
+
 export const parseResume = async (base64Data: string, mimeType: string): Promise<Ingredient[]> => {
   const prompt = `
     You are an expert Resume Chef.
     Analyze the attached resume document.
     Extract key "ingredients" for a job application profile.
     
-    Categorize them into:
-    - 'skill' (Technical or soft skills)
-    - 'experience' (Work history, job titles)
-    - 'education' (Degrees, universities)
-    - 'certification' (Certificates, courses)
+    Categorize them into one of these EXACT categories:
+    - 'education' (Degrees, universities, high schools)
+    - 'experience' (Work history, internships, employment)
+    - 'project' (Academic projects, capstones, hackathons, personal projects)
+    - 'certification' (Certificates, online courses, bootcamps, awards, honors)
+    - 'skill' (Technical or soft skills, languages, tools)
 
-    For 'experience', 'education', and 'certification', use the 'details' field to provide dates or short context (e.g. "2020-2022", "Senior Level").
-    For 'skill', 'details' can be proficiency level if available, otherwise leave empty.
+    CRITICAL INSTRUCTION FOR 'details':
+    - For 'experience' AND 'project': You MUST extract the full list of bullet points, responsibilities, and achievements. Do not summarize or truncate. Copy the content. Include dates and location at the beginning (e.g., "Jan 2023 - Present | City, Country \n- Responsibility 1...").
+    - For 'education': Include degree, institution, dates, GPA (if available).
+    - For 'skill': Proficiency level or related context.
 
     Return a JSON array of objects with fields: name, category, details.
     Do not generate IDs, I will handle them.
@@ -211,7 +253,6 @@ export const parseResume = async (base64Data: string, mimeType: string): Promise
           type: Type.OBJECT,
           properties: {
             name: { type: Type.STRING },
-            // Removed enum constraint to prevent validation errors on slight model deviations
             category: { type: Type.STRING },
             details: { type: Type.STRING },
           },
@@ -226,13 +267,16 @@ export const parseResume = async (base64Data: string, mimeType: string): Promise
   
   try {
     const rawIngredients = JSON.parse(text);
-    const validCategories = ['skill', 'experience', 'education', 'certification'];
+    const validCategories = ['skill', 'experience', 'education', 'certification', 'project'];
 
-    // Add IDs locally and normalize category
     return rawIngredients.map((i: any) => {
       let category = i.category ? i.category.toLowerCase() : 'skill';
       if (!validCategories.includes(category)) {
-        category = 'skill'; // Default fallback
+        // Fallback logic for miscategorized items
+        if (category.includes('work') || category.includes('intern')) category = 'experience';
+        else if (category.includes('school') || category.includes('degree')) category = 'education';
+        else if (category.includes('project')) category = 'project';
+        else category = 'skill'; 
       }
       return {
         name: i.name || 'Unknown',
@@ -267,4 +311,134 @@ export const extractJobDescriptionFromImage = async (base64Data: string, mimeTyp
   }));
 
   return response.text || "";
+};
+
+// --- Mock Interview (Taste Test) Functions ---
+
+export const getInterviewQuestion = async (
+  ingredients: Ingredient[],
+  jobDescription: string,
+  history: InterviewMessage[]
+): Promise<string> => {
+  const ingredientsList = ingredients.map(i => i.name).join(', ');
+  
+  // Filter history to only include text content to save tokens
+  const conversationContext = history
+    .map(msg => `${msg.role === 'chef' ? 'Interviewer' : 'Candidate'}: ${msg.content}`)
+    .join('\n');
+
+  const prompt = `
+    You are a tough but fair Hiring Manager conducting an interview for the following job:
+    "${jobDescription.substring(0, 500)}..."
+
+    Candidate's Resume Highlights: ${ingredientsList}
+
+    Current Conversation History:
+    ${conversationContext}
+
+    Your Task:
+    Based on the context, ask the NEXT single interview question.
+    - If this is the start, ask a "Tell me about yourself" or introductory question relevant to the role.
+    - If the candidate just answered, ask a follow-up probing question OR move to a new topic (Technical, Behavioral, or Situational) based on the job requirements.
+    - Keep the question professional, direct, and challenging.
+    - Do NOT provide feedback yet, just ask the question.
+  `;
+
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+  }));
+
+  return response.text || "Could you tell me a bit more about your background?";
+};
+
+export const evaluateAudioAnswer = async (
+  question: string,
+  audioBase64: string,
+  mimeType: string
+): Promise<{ feedback: string; score: number; transcription: string }> => {
+  const prompt = `
+    You are an Expert Interview Coach using the HireVue methodology.
+    
+    Context:
+    The interviewer asked: "${question}"
+    
+    Task:
+    1. Listen to the candidate's audio answer carefully.
+    2. Transcribe the main points of what they said.
+    3. Evaluate the answer using the STAR method (Situation, Task, Action, Result).
+    4. Provide a score from 1-10.
+    5. Provide brief, constructive feedback on both content and delivery (clarity, confidence).
+
+    Return JSON format only:
+    { 
+      "transcription": "Summary of what was said",
+      "feedback": "Constructive feedback...", 
+      "score": number 
+    }
+  `;
+
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: {
+      parts: [
+        { inlineData: { mimeType: mimeType, data: audioBase64 } },
+        { text: prompt }
+      ]
+    },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          transcription: { type: Type.STRING },
+          feedback: { type: Type.STRING },
+          score: { type: Type.NUMBER },
+        },
+        required: ["transcription", "feedback", "score"],
+      }
+    }
+  }));
+
+  const text = response.text;
+  if (!text) throw new Error("Could not evaluate answer.");
+  return JSON.parse(text);
+};
+
+export const evaluateAnswer = async (
+  question: string,
+  answer: string
+): Promise<{ feedback: string; score: number }> => {
+  const prompt = `
+    You are an Expert Interview Coach.
+    
+    Question Asked: "${question}"
+    Candidate's Answer: "${answer}"
+
+    Evaluate the answer using the STAR method (Situation, Task, Action, Result) principles.
+    1. Provide a score from 1-10.
+    2. Provide brief, constructive feedback. Highlight what was good and what was missing (e.g., "You didn't mention the result" or "Great detailed action").
+    
+    Return JSON format: { "feedback": string, "score": number }
+  `;
+
+  const response: GenerateContentResponse = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          feedback: { type: Type.STRING },
+          score: { type: Type.NUMBER },
+        },
+        required: ["feedback", "score"],
+      }
+    }
+  }));
+
+  const text = response.text;
+  if (!text) throw new Error("Could not evaluate answer.");
+  return JSON.parse(text);
 };

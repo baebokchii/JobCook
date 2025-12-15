@@ -2,12 +2,13 @@ export enum CookMode {
   PANTRY = 'PANTRY',      // Resume/Profile
   RECIPE = 'RECIPE',      // Job Description & Analysis
   COVER_LETTER = 'COVER_LETTER', // Cover Letter Generation
+  TASTE_TEST = 'TASTE_TEST', // Mock Interview (Careermizing feature)
 }
 
 export interface Ingredient {
   id: string;
   name: string;
-  category: 'skill' | 'experience' | 'education' | 'certification';
+  category: 'skill' | 'experience' | 'education' | 'certification' | 'project';
   details?: string;
 }
 
@@ -24,6 +25,14 @@ export interface CompanyResearchResult {
   sources: { title: string; uri: string }[];
 }
 
+export interface InterviewMessage {
+  id: string;
+  role: 'chef' | 'candidate'; // chef = AI interviewer, candidate = user
+  content: string;
+  feedback?: string; // Feedback on candidate's answer
+  score?: number; // 1-10 score for the answer
+}
+
 export interface ChefState {
   ingredients: Ingredient[];
   currentRecipe: string; // Job Description
@@ -31,6 +40,7 @@ export interface ChefState {
   analysis: DishAnalysis | null;
   companyResearch: CompanyResearchResult | null;
   generatedCoverLetter: string | null;
+  interviewHistory: InterviewMessage[]; // Chat history for mock interview
   isCooking: boolean; // Loading state
 }
 
